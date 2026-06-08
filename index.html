@@ -405,15 +405,15 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
         import { getDatabase, ref, push, set, onValue, remove, update } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
 
-        // Firebase 配置 - 請替換成你自己的 Firebase 配置
+        // Firebase 配置
         const firebaseConfig = {
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_AUTH_DOMAIN",
-            databaseURL: "YOUR_DATABASE_URL",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_STORAGE_BUCKET",
-            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-            appId: "YOUR_APP_ID"
+            apiKey: "AIzaSyDrrbsR80r54vrR2keK_x5OhK8vPB9bcLc",
+            authDomain: "inventory-system-fddb0.firebaseapp.com",
+            databaseURL: "https://inventory-system-fddb0-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "inventory-system-fddb0",
+            storageBucket: "inventory-system-fddb0.firebasestorage.app",
+            messagingSenderId: "40274693383",
+            appId: "1:40274693383:web:e4c71de0784f0eae3d49a2"
         };
 
         // 初始化 Firebase
@@ -491,23 +491,58 @@
         function loadItems() {
             if (isFirebaseConfigured) {
                 document.getElementById('loadingState').style.display = 'block';
-                onValue(itemsRef, (snapshot) => {
+
+                // 設定超時機制（10秒）
+                const timeout = setTimeout(() => {
                     document.getElementById('loadingState').style.display = 'none';
-                    items = snapshot.val() || {};
-                    renderItems();
-                });
-            } else {
-                // 使用 localStorage
-                const saved = localStorage.getItem('inventoryItems');
-                if (saved) {
-                    const itemsArray = JSON.parse(saved);
-                    items = {};
-                    itemsArray.forEach(item => {
-                        items[item.id] = item;
+                    console.error('Firebase 連接超時，切換到本地模式');
+                    alert('Firebase 連接超時，已切換到本地模式。請檢查：\n1. Realtime Database 是否已啟用\n2. 網路連線是否正常\n3. 按 F12 查看 Console 錯誤訊息');
+                    isFirebaseConfigured = false;
+                    updateStatus('offline');
+                    loadItemsFromLocal();
+                }, 10000);
+
+                try {
+                    onValue(itemsRef, (snapshot) => {
+                        clearTimeout(timeout);
+                        document.getElementById('loadingState').style.display = 'none';
+                        items = snapshot.val() || {};
+                        renderItems();
+                        console.log('Firebase 資料載入成功');
+                    }, (error) => {
+                        clearTimeout(timeout);
+                        document.getElementById('loadingState').style.display = 'none';
+                        console.error('Firebase 讀取錯誤:', error);
+                        alert('Firebase 讀取失敗：' + error.message + '\n已切換到本地模式');
+                        isFirebaseConfigured = false;
+                        updateStatus('offline');
+                        loadItemsFromLocal();
                     });
+                } catch (error) {
+                    clearTimeout(timeout);
+                    document.getElementById('loadingState').style.display = 'none';
+                    console.error('Firebase 初始化錯誤:', error);
+                    alert('Firebase 初始化失敗，已切換到本地模式');
+                    isFirebaseConfigured = false;
+                    updateStatus('offline');
+                    loadItemsFromLocal();
                 }
-                renderItems();
+            } else {
+                loadItemsFromLocal();
             }
+        }
+
+        // 從 localStorage 載入
+        function loadItemsFromLocal() {
+            const saved = localStorage.getItem('inventoryItems');
+            if (saved) {
+                const itemsArray = JSON.parse(saved);
+                items = {};
+                itemsArray.forEach(item => {
+                    items[item.id] = item;
+                });
+            }
+            renderItems();
         }
 
         // 保存到 localStorage（備份）
