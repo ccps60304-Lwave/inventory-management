@@ -233,9 +233,89 @@
         .close:hover {
             color: #333;
         }
+
+        .loading {
+            text-align: center;
+            color: white;
+            font-size: 1.2em;
+            margin-top: 50px;
+        }
+
+        .status-indicator {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 15px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .status-online {
+            color: #48bb78;
+        }
+
+        .status-offline {
+            color: #f56565;
+        }
+
+        .image-preview-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .image-preview-content {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+        }
+
+        .image-preview-close {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            font-size: 40px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            z-index: 2001;
+            transition: color 0.3s;
+        }
+
+        .image-preview-close:hover {
+            color: #ccc;
+        }
+
+        .item-image {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            background: #f0f0f0;
+            cursor: pointer;
+            transition: opacity 0.3s;
+        }
+
+        .item-image:hover {
+            opacity: 0.8;
+        }
     </style>
 </head>
 <body>
+    <div class="status-indicator">
+        <span id="statusText">🔄 連接中...</span>
+    </div>
+
     <div class="container">
         <h1>📦 庫存管理系統</h1>
 
@@ -270,10 +350,20 @@
             </form>
         </div>
 
+        <div id="loadingState" class="loading" style="display: none;">
+            載入中...
+        </div>
+
         <div id="itemsContainer" class="items-grid"></div>
         <div id="emptyState" class="empty-state" style="display: none;">
             目前沒有任何物品，請新增第一個物品！
         </div>
+    </div>
+
+    <!-- 圖片預覽Modal -->
+    <div id="imagePreviewModal" class="image-preview-modal">
+        <span class="image-preview-close">&times;</span>
+        <img id="previewImage" class="image-preview-content" src="" alt="預覽">
     </div>
 
     <!-- 編輯Modal -->
@@ -310,22 +400,57 @@
         </div>
     </div>
 
-    <script>
-        let items = [];
-        let editingItemId = null;
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+        import { getDatabase, ref, push, set, onValue, remove, update } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
 
-        // 載入數據
-        function loadItems() {
-            const saved = localStorage.getItem('inventoryItems');
-            if (saved) {
-                items = JSON.parse(saved);
+        // Firebase 配置 - 請替換成你自己的 Firebase 配置
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            databaseURL: "YOUR_DATABASE_URL",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // 初始化 Firebase
+        let app, database, itemsRef;
+        let isFirebaseConfigured = false;
+
+        // 檢查 Firebase 是否已配置
+        if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+            try {
+                app = initializeApp(firebaseConfig);
+                database = getDatabase(app);
+                itemsRef = ref(database, 'items');
+                isFirebaseConfigured = true;
+                updateStatus('online');
+            } catch (error) {
+                console.error('Firebase 初始化失敗:', error);
+                updateStatus('offline');
+                alert('Firebase 連接失敗，將使用本地存儲模式。請檢查 Firebase 配置。');
             }
-            renderItems();
+        } else {
+            updateStatus('offline');
+            console.warn('Firebase 未配置，使用本地存儲模式。請按照 FIREBASE_SETUP.md 的說明配置 Firebase。');
         }
 
-        // 保存數據
-        function saveItems() {
-            localStorage.setItem('inventoryItems', JSON.stringify(items));
+        let items = {};
+        let searchTerm = '';
+
+        // 更新狀態顯示
+        function updateStatus(status) {
+            const statusText = document.getElementById('statusText');
+            if (status === 'online') {
+                statusText.textContent = '☁️ 雲端同步';
+                statusText.className = 'status-online';
+            } else {
+                statusText.textContent = '💾 本地模式';
+                statusText.className = 'status-offline';
+            }
         }
 
         // 將圖片轉換為 Base64
@@ -336,6 +461,59 @@
                 reader.onerror = reject;
                 reader.readAsDataURL(file);
             });
+        }
+
+        // 壓縮圖片
+        function compressImage(base64, maxWidth = 800) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxWidth) {
+                        height = (height * maxWidth) / width;
+                        width = maxWidth;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.7));
+                };
+                img.src = base64;
+            });
+        }
+
+        // 載入數據（Firebase 或 localStorage）
+        function loadItems() {
+            if (isFirebaseConfigured) {
+                document.getElementById('loadingState').style.display = 'block';
+                onValue(itemsRef, (snapshot) => {
+                    document.getElementById('loadingState').style.display = 'none';
+                    items = snapshot.val() || {};
+                    renderItems();
+                });
+            } else {
+                // 使用 localStorage
+                const saved = localStorage.getItem('inventoryItems');
+                if (saved) {
+                    const itemsArray = JSON.parse(saved);
+                    items = {};
+                    itemsArray.forEach(item => {
+                        items[item.id] = item;
+                    });
+                }
+                renderItems();
+            }
+        }
+
+        // 保存到 localStorage（備份）
+        function saveToLocalStorage() {
+            const itemsArray = Object.values(items);
+            localStorage.setItem('inventoryItems', JSON.stringify(itemsArray));
         }
 
         // 新增物品
@@ -349,11 +527,11 @@
 
             let imageData = null;
             if (imageFile) {
-                imageData = await readFileAsDataURL(imageFile);
+                const rawImage = await readFileAsDataURL(imageFile);
+                imageData = await compressImage(rawImage);
             }
 
             const newItem = {
-                id: Date.now(),
                 name,
                 quantity,
                 location,
@@ -361,21 +539,42 @@
                 createdAt: new Date().toISOString()
             };
 
-            items.push(newItem);
-            saveItems();
-            renderItems();
+            try {
+                if (isFirebaseConfigured) {
+                    const newItemRef = push(itemsRef);
+                    newItem.id = newItemRef.key;
+                    await set(newItemRef, newItem);
+                } else {
+                    newItem.id = Date.now().toString();
+                    items[newItem.id] = newItem;
+                    saveToLocalStorage();
+                    renderItems();
+                }
 
-            // 清空表單
-            document.getElementById('itemForm').reset();
+                // 清空表單
+                document.getElementById('itemForm').reset();
+            } catch (error) {
+                console.error('新增物品失敗:', error);
+                alert('新增物品失敗，請稍後再試。');
+            }
         });
 
         // 渲染物品列表
-        function renderItems(filteredItems = null) {
+        function renderItems() {
             const container = document.getElementById('itemsContainer');
             const emptyState = document.getElementById('emptyState');
-            const itemsToRender = filteredItems || items;
 
-            if (itemsToRender.length === 0) {
+            let itemsArray = Object.values(items);
+
+            // 應用搜尋過濾
+            if (searchTerm) {
+                itemsArray = itemsArray.filter(item =>
+                    item.name.toLowerCase().includes(searchTerm) ||
+                    (item.location && item.location.toLowerCase().includes(searchTerm))
+                );
+            }
+
+            if (itemsArray.length === 0) {
                 container.innerHTML = '';
                 emptyState.style.display = 'block';
                 return;
@@ -383,9 +582,9 @@
 
             emptyState.style.display = 'none';
 
-            container.innerHTML = itemsToRender.map(item => `
+            container.innerHTML = itemsArray.map(item => `
                 <div class="item-card">
-                    ${item.image ? `<img src="${item.image}" class="item-image" alt="${item.name}">` : '<div class="item-image"></div>'}
+                    ${item.image ? `<img src="${item.image}" class="item-image" alt="${item.name}" onclick="window.openImagePreview('${item.image}')">` : '<div class="item-image"></div>'}
                     <div class="item-info">
                         <strong>名稱：</strong>${item.name}
                     </div>
@@ -396,8 +595,8 @@
                         <strong>位置：</strong>${item.location || '未設定'}
                     </div>
                     <div class="item-actions">
-                        <button class="btn-edit" onclick="openEditModal(${item.id})">編輯</button>
-                        <button class="btn-delete" onclick="deleteItem(${item.id})">刪除</button>
+                        <button class="btn-edit" onclick="window.openEditModal('${item.id}')">編輯</button>
+                        <button class="btn-delete" onclick="window.deleteItem('${item.id}')">刪除</button>
                     </div>
                 </div>
             `).join('');
@@ -405,31 +604,22 @@
 
         // 搜尋功能
         document.getElementById('searchInput').addEventListener('input', (e) => {
-            const searchTerm = e.target.value.toLowerCase();
-            if (searchTerm === '') {
-                renderItems();
-            } else {
-                const filtered = items.filter(item =>
-                    item.name.toLowerCase().includes(searchTerm) ||
-                    (item.location && item.location.toLowerCase().includes(searchTerm))
-                );
-                renderItems(filtered);
-            }
+            searchTerm = e.target.value.toLowerCase();
+            renderItems();
         });
 
         // 打開編輯Modal
-        function openEditModal(id) {
-            const item = items.find(i => i.id === id);
+        window.openEditModal = function(id) {
+            const item = items[id];
             if (!item) return;
 
-            editingItemId = id;
             document.getElementById('editItemId').value = id;
             document.getElementById('editItemName').value = item.name;
             document.getElementById('editItemQuantity').value = item.quantity;
             document.getElementById('editItemLocation').value = item.location || '';
 
             document.getElementById('editModal').style.display = 'block';
-        }
+        };
 
         // 關閉Modal
         document.querySelector('.close').addEventListener('click', () => {
@@ -447,38 +637,80 @@
         document.getElementById('editForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const id = parseInt(document.getElementById('editItemId').value);
+            const id = document.getElementById('editItemId').value;
             const name = document.getElementById('editItemName').value;
             const quantity = parseInt(document.getElementById('editItemQuantity').value);
             const location = document.getElementById('editItemLocation').value;
             const imageFile = document.getElementById('editItemImage').files[0];
 
-            const itemIndex = items.findIndex(i => i.id === id);
-            if (itemIndex === -1) return;
-
-            items[itemIndex].name = name;
-            items[itemIndex].quantity = quantity;
-            items[itemIndex].location = location;
+            const updatedItem = {
+                ...items[id],
+                name,
+                quantity,
+                location
+            };
 
             if (imageFile) {
-                items[itemIndex].image = await readFileAsDataURL(imageFile);
+                const rawImage = await readFileAsDataURL(imageFile);
+                updatedItem.image = await compressImage(rawImage);
             }
 
-            saveItems();
-            renderItems();
+            try {
+                if (isFirebaseConfigured) {
+                    await update(ref(database, `items/${id}`), updatedItem);
+                } else {
+                    items[id] = updatedItem;
+                    saveToLocalStorage();
+                    renderItems();
+                }
 
-            document.getElementById('editModal').style.display = 'none';
-            document.getElementById('editForm').reset();
+                document.getElementById('editModal').style.display = 'none';
+                document.getElementById('editForm').reset();
+            } catch (error) {
+                console.error('更新物品失敗:', error);
+                alert('更新物品失敗，請稍後再試。');
+            }
         });
 
         // 刪除物品
-        function deleteItem(id) {
-            if (confirm('確定要刪除此物品嗎？')) {
-                items = items.filter(item => item.id !== id);
-                saveItems();
-                renderItems();
+        window.deleteItem = async function(id) {
+            if (!confirm('確定要刪除此物品嗎？')) return;
+
+            try {
+                if (isFirebaseConfigured) {
+                    await remove(ref(database, `items/${id}`));
+                } else {
+                    delete items[id];
+                    saveToLocalStorage();
+                    renderItems();
+                }
+            } catch (error) {
+                console.error('刪除物品失敗:', error);
+                alert('刪除物品失敗，請稍後再試。');
             }
-        }
+        };
+
+        // 打開圖片預覽
+        window.openImagePreview = function(imageSrc) {
+            const modal = document.getElementById('imagePreviewModal');
+            const img = document.getElementById('previewImage');
+            img.src = imageSrc;
+            modal.style.display = 'flex';
+        };
+
+        // 關閉圖片預覽
+        const imagePreviewModal = document.getElementById('imagePreviewModal');
+        const imagePreviewClose = document.querySelector('.image-preview-close');
+
+        imagePreviewClose.addEventListener('click', () => {
+            imagePreviewModal.style.display = 'none';
+        });
+
+        imagePreviewModal.addEventListener('click', (e) => {
+            if (e.target === imagePreviewModal) {
+                imagePreviewModal.style.display = 'none';
+            }
+        });
 
         // 頁面載入時執行
         loadItems();
