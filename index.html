@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>庫存管理系統</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft JhengHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+
+        .add-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px dashed #ddd;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+            width: 100%;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+        }
+
+        .items-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .item-card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+
+        .item-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .item-image {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            background: #f0f0f0;
+        }
+
+        .item-info {
+            margin-bottom: 10px;
+        }
+
+        .item-info strong {
+            color: #667eea;
+        }
+
+        .item-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn-edit,
+        .btn-delete {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .btn-edit {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-edit:hover {
+            background: #38a169;
+        }
+
+        .btn-delete {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-delete:hover {
+            background: #e53e3e;
+        }
+
+        .search-section {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: white;
+            font-size: 1.2em;
+            margin-top: 50px;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.5em;
+            }
+
+            .items-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            margin: 50px auto;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .close {
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .close:hover {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📦 庫存管理系統</h1>
+
+        <div class="search-section">
+            <input type="text" id="searchInput" class="search-input" placeholder="搜尋物品名稱或位置...">
+        </div>
+
+        <div class="add-section">
+            <h2 style="margin-bottom: 20px;">新增物品</h2>
+            <form id="itemForm">
+                <div class="form-group">
+                    <label for="itemName">物品名稱 *</label>
+                    <input type="text" id="itemName" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="itemQuantity">數量 *</label>
+                    <input type="number" id="itemQuantity" min="0" value="1" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="itemLocation">位置</label>
+                    <input type="text" id="itemLocation" placeholder="例如：A區-架子1">
+                </div>
+
+                <div class="form-group">
+                    <label for="itemImage">上傳照片</label>
+                    <input type="file" id="itemImage" accept="image/*">
+                </div>
+
+                <button type="submit" class="btn">新增物品</button>
+            </form>
+        </div>
+
+        <div id="itemsContainer" class="items-grid"></div>
+        <div id="emptyState" class="empty-state" style="display: none;">
+            目前沒有任何物品，請新增第一個物品！
+        </div>
+    </div>
+
+    <!-- 編輯Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>編輯物品</h2>
+                <span class="close">&times;</span>
+            </div>
+            <form id="editForm">
+                <input type="hidden" id="editItemId">
+                <div class="form-group">
+                    <label for="editItemName">物品名稱 *</label>
+                    <input type="text" id="editItemName" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="editItemQuantity">數量 *</label>
+                    <input type="number" id="editItemQuantity" min="0" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="editItemLocation">位置</label>
+                    <input type="text" id="editItemLocation">
+                </div>
+
+                <div class="form-group">
+                    <label for="editItemImage">更換照片</label>
+                    <input type="file" id="editItemImage" accept="image/*">
+                </div>
+
+                <button type="submit" class="btn">保存更改</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let items = [];
+        let editingItemId = null;
+
+        // 載入數據
+        function loadItems() {
+            const saved = localStorage.getItem('inventoryItems');
+            if (saved) {
+                items = JSON.parse(saved);
+            }
+            renderItems();
+        }
+
+        // 保存數據
+        function saveItems() {
+            localStorage.setItem('inventoryItems', JSON.stringify(items));
+        }
+
+        // 將圖片轉換為 Base64
+        function readFileAsDataURL(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // 新增物品
+        document.getElementById('itemForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const name = document.getElementById('itemName').value;
+            const quantity = parseInt(document.getElementById('itemQuantity').value);
+            const location = document.getElementById('itemLocation').value;
+            const imageFile = document.getElementById('itemImage').files[0];
+
+            let imageData = null;
+            if (imageFile) {
+                imageData = await readFileAsDataURL(imageFile);
+            }
+
+            const newItem = {
+                id: Date.now(),
+                name,
+                quantity,
+                location,
+                image: imageData,
+                createdAt: new Date().toISOString()
+            };
+
+            items.push(newItem);
+            saveItems();
+            renderItems();
+
+            // 清空表單
+            document.getElementById('itemForm').reset();
+        });
+
+        // 渲染物品列表
+        function renderItems(filteredItems = null) {
+            const container = document.getElementById('itemsContainer');
+            const emptyState = document.getElementById('emptyState');
+            const itemsToRender = filteredItems || items;
+
+            if (itemsToRender.length === 0) {
+                container.innerHTML = '';
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+
+            container.innerHTML = itemsToRender.map(item => `
+                <div class="item-card">
+                    ${item.image ? `<img src="${item.image}" class="item-image" alt="${item.name}">` : '<div class="item-image"></div>'}
+                    <div class="item-info">
+                        <strong>名稱：</strong>${item.name}
+                    </div>
+                    <div class="item-info">
+                        <strong>數量：</strong>${item.quantity}
+                    </div>
+                    <div class="item-info">
+                        <strong>位置：</strong>${item.location || '未設定'}
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn-edit" onclick="openEditModal(${item.id})">編輯</button>
+                        <button class="btn-delete" onclick="deleteItem(${item.id})">刪除</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 搜尋功能
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            if (searchTerm === '') {
+                renderItems();
+            } else {
+                const filtered = items.filter(item =>
+                    item.name.toLowerCase().includes(searchTerm) ||
+                    (item.location && item.location.toLowerCase().includes(searchTerm))
+                );
+                renderItems(filtered);
+            }
+        });
+
+        // 打開編輯Modal
+        function openEditModal(id) {
+            const item = items.find(i => i.id === id);
+            if (!item) return;
+
+            editingItemId = id;
+            document.getElementById('editItemId').value = id;
+            document.getElementById('editItemName').value = item.name;
+            document.getElementById('editItemQuantity').value = item.quantity;
+            document.getElementById('editItemLocation').value = item.location || '';
+
+            document.getElementById('editModal').style.display = 'block';
+        }
+
+        // 關閉Modal
+        document.querySelector('.close').addEventListener('click', () => {
+            document.getElementById('editModal').style.display = 'none';
+        });
+
+        window.addEventListener('click', (e) => {
+            const modal = document.getElementById('editModal');
+            if (e.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+
+        // 編輯物品
+        document.getElementById('editForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const id = parseInt(document.getElementById('editItemId').value);
+            const name = document.getElementById('editItemName').value;
+            const quantity = parseInt(document.getElementById('editItemQuantity').value);
+            const location = document.getElementById('editItemLocation').value;
+            const imageFile = document.getElementById('editItemImage').files[0];
+
+            const itemIndex = items.findIndex(i => i.id === id);
+            if (itemIndex === -1) return;
+
+            items[itemIndex].name = name;
+            items[itemIndex].quantity = quantity;
+            items[itemIndex].location = location;
+
+            if (imageFile) {
+                items[itemIndex].image = await readFileAsDataURL(imageFile);
+            }
+
+            saveItems();
+            renderItems();
+
+            document.getElementById('editModal').style.display = 'none';
+            document.getElementById('editForm').reset();
+        });
+
+        // 刪除物品
+        function deleteItem(id) {
+            if (confirm('確定要刪除此物品嗎？')) {
+                items = items.filter(item => item.id !== id);
+                saveItems();
+                renderItems();
+            }
+        }
+
+        // 頁面載入時執行
+        loadItems();
+    </script>
+</body>
+</html>
